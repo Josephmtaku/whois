@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "G:\\whois\\whois\\whois.csproj": {}
+    "G:\\441101\\TEST\\whois\\whois\\whois.csproj": {}
   },
   "projects": {
-    "G:\\whois\\whois\\whois.csproj": {
+    "G:\\441101\\TEST\\whois\\whois\\whois.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "G:\\whois\\whois\\whois.csproj",
+        "projectUniqueName": "G:\\441101\\TEST\\whois\\whois\\whois.csproj",
         "projectName": "whois",
-        "projectPath": "G:\\whois\\whois\\whois.csproj",
+        "projectPath": "G:\\441101\\TEST\\whois\\whois\\whois.csproj",
         "packagesPath": "C:\\Users\\701790\\.nuget\\packages\\",
-        "outputPath": "G:\\whois\\whois\\obj\\",
+        "outputPath": "G:\\441101\\TEST\\whois\\whois\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -44,6 +44,12 @@
       "frameworks": {
         "net6.0": {
           "targetAlias": "net6.0",
+          "dependencies": {
+            "MySql.Data": {
+              "target": "Package",
+              "version": "[8.2.0, )"
+            }
+          },
           "imports": [
             "net461",
             "net462",

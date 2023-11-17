@@ -1,17 +1,12 @@
 ﻿// See https://aka.ms/new-console-template for more information
+using MySql.Data.MySqlClient;
 using System.Net.Sockets;
 using System.Net;
 using whois;
 Boolean debug = true;
 
-Dictionary<String, User> DataBase = new Dictionary<String, User>
-{
-    {"cssbct",
-      new User {UserID="cssbct",Surname="Tompsett",Fornames="Brian C",Title="Eur Ing",
-        Position="Lecturer of Computer Science",
-        Phone="+44 1482 46 5222",Email="B.C.Tompsett@hull.ac.uk",Location="in RB-336" }
-   }
-};
+string connectionString = "server=localhost;user=root;database=user_accounts;port=3306;password=L3tM31n";
+MySqlConnection connection = new MySqlConnection(connectionString);
 
 if (args.Length == 0)
 {
@@ -59,13 +54,24 @@ void ProcessCommand(string command)
             }
         }
         if (debug) Console.Write($"Operation on ID '{ID}'");
-        if (operation == null ||
-            update == null &&
-            (!DataBase.ContainsKey(ID)))
+        if (operation == null || update == null)
         {
-            Console.WriteLine($"User '{ID}' not known");
-            return;
+            // Assuming the 'User_ID' column is unique
+            bool userExists;
+            using (MySqlCommand checkUserCommand = new MySqlCommand($"SELECT COUNT(*) FROM user_accounts.users WHERE User_ID = '{ID}'", connection))
+            {
+                connection.Open();
+                int userCount = Convert.ToInt32(checkUserCommand.ExecuteScalar());
+                userExists = userCount > 0;
+            }
+
+            if (!userExists)
+            {
+                Console.WriteLine($"User '{ID}' not known");
+                return;
+            }
         }
+
     }
     catch (Exception e)
     {
@@ -74,130 +80,174 @@ void ProcessCommand(string command)
 }
 
 /// Functions to process database requests
-void Dump(String ID)
-{
-    if (debug) Console.WriteLine(" output all fields");
-    Console.WriteLine($"UserID={DataBase[ID].UserID}");
-    Console.WriteLine($"Surname={DataBase[ID].Surname}");
-    Console.WriteLine($"Fornames={DataBase[ID].Fornames}");
-    Console.WriteLine($"Title={DataBase[ID].Title}");
-    Console.WriteLine($"Position={DataBase[ID].Position}");
-    Console.WriteLine($"Phone={DataBase[ID].Phone}");
-    Console.WriteLine($"Email={DataBase[ID].Email}");
-    Console.WriteLine($"location={DataBase[ID].Location}");
 
+void Dump(string ID)
+{
+    if (debug) Console.WriteLine("Output all fields");
+
+    try
+    {
+        connection.Open();
+
+        using (MySqlCommand command = new MySqlCommand($"SELECT * FROM user_accounts.users WHERE User_ID = '{ID}'", connection))
+        {
+            using (MySqlDataReader reader = command.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    Console.WriteLine($"UserID={reader["User_ID"]}");
+                    Console.WriteLine($"LoginID={reader["LoginID"]}");
+                    Console.WriteLine($"Surname={reader["Surname"]}");
+                    Console.WriteLine($"Fornames={reader["Fornames"]}");
+                    Console.WriteLine($"Title={reader["Title"]}");
+                    Console.WriteLine($"Position={reader["Position"]}");
+                    Console.WriteLine($"Phone={reader["Phone"]}");
+                    Console.WriteLine($"Email={reader["Email"]}");
+                    Console.WriteLine($"Location={reader["Location"]}");
+                }
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error in Dump operation: {ex.Message}");
+    }
+    finally
+    {
+        connection.Close();
+    }
 }
-void Lookup(String ID, String field)
+
+// ... (Your existing code)
+
+
+void Lookup(string ID, string field)
 {
     if (debug)
         Console.WriteLine($" lookup field '{field}'");
-    String result = null;
-    switch (field)
+
+    try
     {
-        case "location": result = DataBase[ID].Location; break;
-        case "UserID": result = DataBase[ID].UserID; break;
-        case "Surname": result = DataBase[ID].Surname; break;
-        case "Fornames": result = DataBase[ID].Fornames; break;
-        case "Title": result = DataBase[ID].Title; break;
-        case "Phone": result = DataBase[ID].Phone; break;
-        case "Position": result = DataBase[ID].Position; break;
-        case "Email": result = DataBase[ID].Email; break;
+        using (MySqlCommand command = new MySqlCommand($"SELECT {field} FROM user_accounts.users WHERE User_ID = '{ID}'", connection))
+        {
+            connection.Open();
+            object result = command.ExecuteScalar();
+            Console.WriteLine(result);
+        }
     }
-    Console.WriteLine(result);
+    finally
+    {
+        connection.Close();
+    }
 }
-void Update(String ID, String field, String update)
+
+
+void Update(string ID, string field, string update)
 {
     if (debug)
         Console.WriteLine($" update field '{field}' to '{update}'");
-    if (!DataBase.ContainsKey(ID)) DataBase.TryAdd(ID, new User { });
-    switch (field)
-    {
-        case "location": DataBase[ID].Location = update; break;
-        case "UserID": DataBase[ID].UserID = update; break;
-        case "Surname": DataBase[ID].Surname = update; break;
-        case "Fornames": DataBase[ID].Fornames = update; break;
-        case "Title": DataBase[ID].Title = update; break;
-        case "Phone": DataBase[ID].Phone = update; break;
-        case "Position": DataBase[ID].Position = update; break;
-        case "Email": DataBase[ID].Email = update; break;
-    }
-    Console.WriteLine("OK");
 
+    using (MySqlCommand command = new MySqlCommand($"UPDATE user_accounts.users SET {field} = '{update}' WHERE User_ID = '{ID}'", connection))
+    {
+        command.ExecuteNonQuery();
+        Console.WriteLine("OK");
+    }
 }
 
-/// Functions to process database requests
-void Delete(String ID)
+void Delete(string ID)
 {
     if (debug) Console.WriteLine($"Delete record '{ID}' from DataBase");
-    DataBase.Remove(ID);
+
+    using (MySqlCommand command = new MySqlCommand($"DELETE FROM user_accounts.users WHERE User_ID = '{ID}'", connection))
+    {
+        command.ExecuteNonQuery();
+    }
 }
 void RunServer()
 {
-    // At the moment we do not have a server
     TcpListener listener;
     Socket connection;
     NetworkStream socketStream;
+
     try
     {
         listener = new TcpListener(43);
         listener.Start();
+
         while (true)
         {
             connection = listener.AcceptSocket();
             connection.SendTimeout = 1000;
             connection.ReceiveTimeout = 1000;
             socketStream = new NetworkStream(connection);
-            doRequest(socketStream); // You supply this
-            socketStream.Close();
+            doRequest(socketStream);
             connection.Close();
+            socketStream.Close();
         }
     }
     catch (Exception e)
     {
-        Console.WriteLine(e.ToString()); // An example
+        Console.WriteLine(e.ToString());
     }
-    /// Handle a network request
-    void doRequest(NetworkStream socketStream)
+    finally
     {
+        // Connection and socketStream will be closed automatically
+    }
+}
+
+void doRequest(NetworkStream socketStream)
+{
         StreamWriter sw = new StreamWriter(socketStream);
         StreamReader sr = new StreamReader(socketStream);
+
         if (debug) Console.WriteLine("Waiting for input from client...");
+
         try
         {
             String line = sr.ReadLine();
+
             if (line == null)
             {
                 if (debug) Console.WriteLine("Ignoring null command");
                 return;
             }
-            Console.WriteLine($"Received Network Command: '{line}'");
 
-            //sw.WriteLine(line);   // Need to remove this line after testing
-            //sw.Flush();           // Need to remove this line after testing   
+            Console.WriteLine($"Received Network Command: '{line}'");
 
             if (line == "POST / HTTP/1.1")
             {
-                // The we have an update
                 if (debug) Console.WriteLine("Received an update request");
-                DataBase["cssbct"].Location = "network update test string";
+
                 int content_length = 0;
+
                 while (line != "")
                 {
                     if (line.StartsWith("Content-Length: "))
                     {
                         content_length = Int32.Parse(line.Substring(16));
                     }
+
                     line = sr.ReadLine();
+
                     if (debug) Console.WriteLine($"Skipped Header Line: '{line}'");
                 }
+
                 line = "";
+
                 for (int i = 0; i < content_length; i++) line += (char)sr.Read();
+
                 String[] slices = line.Split(new char[] { '&' }, 2);
                 String ID = slices[0].Substring(5);
                 String value = slices[1].Substring(9);
+
                 if (debug) Console.WriteLine($"Received an update request for '{ID}' to '{value}'");
-                if (!DataBase.ContainsKey(ID)) DataBase.TryAdd(ID, new User { });
-                DataBase[ID].Location = value;
+
+                using (MySqlCommand command = new MySqlCommand($"UPDATE user_accounts.users SET Location = '{value}' WHERE User_ID = '{ID}'", connection))
+                {
+                    connection.Open(); 
+                    command.ExecuteNonQuery();
+                }
+
                 sw.WriteLine("HTTP/1.1 200 OK");
                 sw.WriteLine("Content-Type: text/plain");
                 sw.WriteLine();
@@ -206,49 +256,68 @@ void RunServer()
             }
             else if (line.StartsWith("GET /?name=") && line.EndsWith(" HTTP/1.1"))
             {
-                // then we have a lookup
                 if (debug) Console.WriteLine("Received a lookup request");
-                String[] slices = line.Split(" ");  // Split into 3 pieces
-                String ID = slices[1].Substring(7);  // start at the 7th letter of the middle slice - skip `/?name=`
-                if (DataBase.ContainsKey(ID))
-                {
-                    String result = DataBase[ID].Location;
-                    sw.WriteLine("HTTP/1.1 200 OK");
-                    sw.WriteLine("Content-Type: text/plain");
-                    sw.WriteLine();
-                    sw.WriteLine(result);
-                    sw.Flush();
-                    Console.WriteLine($"Performed Lookup on '{ID}' returning '{result}'");
 
-                }
-                else
+                String[] slices = line.Split(" ");
+                String ID = slices[1].Substring(7);
+
+                try
                 {
-                    // Not found
-                    sw.WriteLine("HTTP/1.1 404 Not Found");
-                    sw.WriteLine("Content-Type: text/plain");
-                    sw.WriteLine();
-                    sw.Flush();
-                    Console.WriteLine($"Performed Lookup on '{ID}' returning '404 Not Found'");
+                    
+
+                    using (MySqlCommand command = new MySqlCommand($"SELECT Location FROM user_accounts.users WHERE User_ID = '{ID}'", connection))
+                    {
+                        connection.Open();
+                        object result = command.ExecuteScalar();
+
+                        if (result != null)
+                        {
+                            sw.WriteLine("HTTP/1.1 200 OK");
+                            sw.WriteLine("Content-Type: text/plain");
+                            sw.WriteLine();
+                            sw.WriteLine(result.ToString());
+                            sw.Flush();
+                            Console.WriteLine($"Performed Lookup on '{ID}' returning '{result}'");
+                        }
+                        else
+                        {
+                            sw.WriteLine("HTTP/1.1 404 Not Found");
+                            sw.WriteLine("Content-Type: text/plain");
+                            sw.WriteLine();
+                            sw.Flush();
+                            Console.WriteLine($"Performed Lookup on '{ID}' returning '404 Not Found'");
+                        }
+                    }
+                }
+                finally
+                {
+                    connection.Close();
                 }
             }
             else
             {
-                // We have an error
-                Console.WriteLine($"Unrecognised command: '{line}'");
+                Console.WriteLine($"Unrecognized command: '{line}'");
                 sw.WriteLine("HTTP/1.1 400 Bad Request");
                 sw.WriteLine("Content-Type: text/plain");
                 sw.WriteLine();
             }
         }
-        catch(Exception e)
+        catch (IOException e)
         {
-            Console.WriteLine($"Fault in Command Processing: {e.ToString()}");
+            Console.WriteLine($"Error reading from the client: {e.Message}");
         }
         finally
         {
-            sw.Close();
-            sr.Close();
+            try
+            {
+                sw.Close();
+                sr.Close();
+                socketStream.Close();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error closing the streams or socket: {ex.Message}");
+            }
         }
-
-    }
 }
+
