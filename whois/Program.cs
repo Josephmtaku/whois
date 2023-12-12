@@ -15,12 +15,20 @@ if (args.Length == 0)
 }
 else
 {
-    for (int i = 0; i < args.Length; i++)
+    string commandsString = string.Join(" ", args);
+    ProcessCommands(commandsString);
+}
+
+void ProcessCommands(string commandsString)
+{
+    string[] commands = commandsString.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+    foreach (var command in commands)
     {
-        ProcessCommand(args[i]);
+        ProcessCommand(command.Trim());
     }
 }
-/// Process the next database command request
+
 void ProcessCommand(string command)
 {
     if (debug) Console.WriteLine($"\nCommand: {command}");
@@ -40,6 +48,7 @@ void ProcessCommand(string command)
         }
         if (debug) Console.Write($"Operation on ID '{ID}'");
         if (operation == null) Dump(ID);
+        else if (operation.ToLower() == "add") AddRecord(ID, field);
         else if (update == null) Lookup(ID, field);
         else Update(ID, field, update);
         if (slice.Length == 2)
@@ -48,7 +57,6 @@ void ProcessCommand(string command)
             // Could be empty if no field specified
             if (operation == "")
             {
-                // Is a record delete command
                 Delete(ID);
                 return;
             }
@@ -56,7 +64,6 @@ void ProcessCommand(string command)
         if (debug) Console.Write($"Operation on ID '{ID}'");
         if (operation == null || update == null)
         {
-            // Assuming the 'User_ID' column is unique
             bool userExists;
             using (MySqlCommand checkUserCommand = new MySqlCommand($"SELECT COUNT(*) FROM user_accounts.users WHERE User_ID = '{ID}'", connection))
             {
@@ -71,16 +78,46 @@ void ProcessCommand(string command)
                 return;
             }
         }
-
     }
     catch (Exception e)
     {
         Console.WriteLine($"Fault in Command Processing: {e.ToString()}");
     }
+    finally
+    {
+        connection.Close();
+    }
 }
 
-/// Functions to process database requests
+void AddRecord(string ID, string field)
+{
+    Console.Write("Enter Surname: ");
+    string surname = Console.ReadLine();
 
+    Console.Write("Enter Fornames: ");
+    string fornames = Console.ReadLine();
+
+    Console.Write("Enter Phone: ");
+    string phone = Console.ReadLine();
+
+    Console.Write("Enter LoginID: ");
+    string loginID = Console.ReadLine();
+
+    Console.Write("Enter Title: ");
+    string title = Console.ReadLine();
+
+    Console.Write("Enter Position: ");
+    string position = Console.ReadLine();
+
+    Console.Write("Enter Email: ");
+    string email = Console.ReadLine();
+
+    Console.Write("Enter Location: ");
+    string location = Console.ReadLine();
+
+    Add(ID, surname, fornames, phone, loginID, title, position, email, location);
+}
+/// Functions to process database requests
 void Dump(string ID)
 {
     if (debug) Console.WriteLine("Output all fields");
@@ -89,7 +126,18 @@ void Dump(string ID)
     {
         connection.Open();
 
-        using (MySqlCommand command = new MySqlCommand($"SELECT * FROM user_accounts.users WHERE User_ID = '{ID}'", connection))
+        using (MySqlCommand command = new MySqlCommand($"SELECT u.User_ID, u.Surname, u.Fornames, u.Phone, " +
+                                                       $"la.LoginID, t.Title, p.Position, e.Email, l.LocationName " +
+                                                       $"FROM user_accounts.users u " +
+                                                       $"JOIN LoginAccounts la ON u.LoginID = la.LoginAccountsID " +
+                                                       $"JOIN Title t ON u.TitleID = t.TitleID " +
+                                                       $"JOIN UserPosition up ON u.User_ID = up.UserID " +
+                                                       $"JOIN Positions p ON up.PositionID = p.PositionID " +
+                                                       $"JOIN UserEmail ue ON u.User_ID = ue.UserID " +
+                                                       $"JOIN Email e ON ue.EmailID = e.EmailID " +
+                                                       $"JOIN UserLocation ul ON u.User_ID = ul.UserID " +
+                                                       $"JOIN Location l ON ul.LocationID = l.LocationID " +
+                                                       $"WHERE u.User_ID = '{ID}'", connection))
         {
             using (MySqlDataReader reader = command.ExecuteReader())
             {
@@ -103,7 +151,7 @@ void Dump(string ID)
                     Console.WriteLine($"Position={reader["Position"]}");
                     Console.WriteLine($"Phone={reader["Phone"]}");
                     Console.WriteLine($"Email={reader["Email"]}");
-                    Console.WriteLine($"Location={reader["Location"]}");
+                    Console.WriteLine($"Location={reader["LocationName"]}");
                 }
             }
         }
@@ -117,10 +165,6 @@ void Dump(string ID)
         connection.Close();
     }
 }
-
-// ... (Your existing code)
-
-
 void Lookup(string ID, string field)
 {
     if (debug)
@@ -128,11 +172,24 @@ void Lookup(string ID, string field)
 
     try
     {
-        using (MySqlCommand command = new MySqlCommand($"SELECT {field} FROM user_accounts.users WHERE User_ID = '{ID}'", connection))
+        if (field.ToLower() == "location")
         {
-            connection.Open();
-            object result = command.ExecuteScalar();
-            Console.WriteLine(result);
+            using (MySqlCommand command = new MySqlCommand($"SELECT l.LocationName FROM UserLocation ul " +
+                                                           $"JOIN Location l ON ul.LocationID = l.LocationID " +
+                                                           $"WHERE ul.UserID = '{ID}'", connection))
+            {
+                connection.Open();
+                object result = command.ExecuteScalar();
+                Console.WriteLine(result);
+            }
+        }
+        else
+        {
+            using (MySqlCommand command = new MySqlCommand($"SELECT {field} FROM user_accounts.users WHERE User_ID = '{ID}'", connection))
+            {
+                object result = command.ExecuteScalar();
+                Console.WriteLine(result);
+            }
         }
     }
     finally
@@ -140,27 +197,79 @@ void Lookup(string ID, string field)
         connection.Close();
     }
 }
-
-
 void Update(string ID, string field, string update)
 {
     if (debug)
         Console.WriteLine($" update field '{field}' to '{update}'");
 
-    using (MySqlCommand command = new MySqlCommand($"UPDATE user_accounts.users SET {field} = '{update}' WHERE User_ID = '{ID}'", connection))
+    try
     {
-        command.ExecuteNonQuery();
+        if (field.ToLower() == "location")
+        {
+            using (MySqlCommand command = new MySqlCommand($"UPDATE UserLocation SET LocationID = '{update}' WHERE UserID = '{ID}'", connection))
+            {
+                connection.Open();
+                command.ExecuteNonQuery();
+            }
+        }
+        else
+        {
+            using (MySqlCommand command = new MySqlCommand($"UPDATE user_accounts.users SET {field} = '{update}' WHERE User_ID = '{ID}'", connection))
+            {
+                command.ExecuteNonQuery();
+            }
+        }
+
         Console.WriteLine("OK");
     }
+    finally
+    {
+        connection.Close();
+    }
 }
+void Add(string ID, string surname, string fornames, string phone, string loginID, string title, string position, string email, string location)
+{
+    try
+    {
+        connection.Open();
+        using (MySqlCommand command = new MySqlCommand($"INSERT INTO users (User_ID, LoginID, Surname, Fornames, TitleID, Phone) " +
+                                                       $"VALUES ({ID}, (SELECT LoginAccountsID FROM LoginAccounts WHERE LoginID = '{loginID}'), '{surname}', '{fornames}', " +
+                                                       $"(SELECT TitleID FROM Title WHERE Title = '{title}'), '{phone}')", connection))
+        {
+            command.ExecuteNonQuery();
+        }
 
+        Console.WriteLine("Record added successfully.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"Error adding record: {ex.Message}");
+    }
+    finally
+    {
+        connection.Close();
+    }
+}
 void Delete(string ID)
 {
     if (debug) Console.WriteLine($"Delete record '{ID}' from DataBase");
 
-    using (MySqlCommand command = new MySqlCommand($"DELETE FROM user_accounts.users WHERE User_ID = '{ID}'", connection))
+    try
     {
-        command.ExecuteNonQuery();
+        using (MySqlCommand command = new MySqlCommand($"DELETE FROM user_accounts.users WHERE User_ID = '{ID}'", connection))
+        {
+            connection.Open();
+            command.ExecuteNonQuery();
+        }
+        // Also delete the corresponding entry from UserLocation
+        using (MySqlCommand command = new MySqlCommand($"DELETE FROM UserLocation WHERE UserID = '{ID}'", connection))
+        {
+            command.ExecuteNonQuery();
+        }
+    }
+    finally
+    {
+        connection.Close();
     }
 }
 void RunServer()
@@ -197,54 +306,60 @@ void RunServer()
 
 void doRequest(NetworkStream socketStream)
 {
-        StreamWriter sw = new StreamWriter(socketStream);
-        StreamReader sr = new StreamReader(socketStream);
+    StreamWriter sw = new StreamWriter(socketStream);
+    StreamReader sr = new StreamReader(socketStream);
 
-        if (debug) Console.WriteLine("Waiting for input from client...");
+    if (debug) Console.WriteLine("Waiting for input from client...");
 
-        try
+    try
+    {
+        String line = sr.ReadLine();
+
+        if (line == null)
         {
-            String line = sr.ReadLine();
+            if (debug) Console.WriteLine("Ignoring null command");
+            return;
+        }
 
-            if (line == null)
+        Console.WriteLine($"Received Network Command: '{line}'");
+
+        if (line == "POST / HTTP/1.1")
+        {
+            if (debug) Console.WriteLine("Received an update request");
+
+            int content_length = 0;
+
+            while (line != "")
             {
-                if (debug) Console.WriteLine("Ignoring null command");
-                return;
-            }
-
-            Console.WriteLine($"Received Network Command: '{line}'");
-
-            if (line == "POST / HTTP/1.1")
-            {
-                if (debug) Console.WriteLine("Received an update request");
-
-                int content_length = 0;
-
-                while (line != "")
+                if (line.StartsWith("Content-Length: "))
                 {
-                    if (line.StartsWith("Content-Length: "))
-                    {
-                        content_length = Int32.Parse(line.Substring(16));
-                    }
-
-                    line = sr.ReadLine();
-
-                    if (debug) Console.WriteLine($"Skipped Header Line: '{line}'");
+                    content_length = Int32.Parse(line.Substring(16));
                 }
 
-                line = "";
+                line = sr.ReadLine();
 
-                for (int i = 0; i < content_length; i++) line += (char)sr.Read();
+                if (debug) Console.WriteLine($"Skipped Header Line: '{line}'");
+            }
 
-                String[] slices = line.Split(new char[] { '&' }, 2);
-                String ID = slices[0].Substring(5);
-                String value = slices[1].Substring(9);
+            line = "";
 
-                if (debug) Console.WriteLine($"Received an update request for '{ID}' to '{value}'");
+            for (int i = 0; i < content_length; i++) line += (char)sr.Read();
 
-                using (MySqlCommand command = new MySqlCommand($"UPDATE user_accounts.users SET Location = '{value}' WHERE User_ID = '{ID}'", connection))
+            String[] slices = line.Split(new char[] { '&' }, 2);
+            String ID = slices[0].Substring(5);
+            String value = slices[1].Substring(9);
+
+            if (debug) Console.WriteLine($"Received an update request for '{ID}' to '{value}'");
+
+            // Validate location before updating
+            if (IsValidLocation(value))
+            {
+                using (MySqlCommand command = new MySqlCommand($"UPDATE user_accounts.users u " +
+                                                           $"JOIN UserLocation ul ON u.User_ID = ul.UserID " +
+                                                           $"SET ul.LocationID = '{value}' " +
+                                                           $"WHERE u.User_ID = '{ID}'", connection))
                 {
-                    connection.Open(); 
+                    connection.Open();
                     command.ExecuteNonQuery();
                 }
 
@@ -254,70 +369,90 @@ void doRequest(NetworkStream socketStream)
                 sw.WriteLine("Update done");
                 sw.Flush();
             }
-            else if (line.StartsWith("GET /?name=") && line.EndsWith(" HTTP/1.1"))
-            {
-                if (debug) Console.WriteLine("Received a lookup request");
-
-                String[] slices = line.Split(" ");
-                String ID = slices[1].Substring(7);
-
-                try
-                {
-                    
-
-                    using (MySqlCommand command = new MySqlCommand($"SELECT Location FROM user_accounts.users WHERE User_ID = '{ID}'", connection))
-                    {
-                        connection.Open();
-                        object result = command.ExecuteScalar();
-
-                        if (result != null)
-                        {
-                            sw.WriteLine("HTTP/1.1 200 OK");
-                            sw.WriteLine("Content-Type: text/plain");
-                            sw.WriteLine();
-                            sw.WriteLine(result.ToString());
-                            sw.Flush();
-                            Console.WriteLine($"Performed Lookup on '{ID}' returning '{result}'");
-                        }
-                        else
-                        {
-                            sw.WriteLine("HTTP/1.1 404 Not Found");
-                            sw.WriteLine("Content-Type: text/plain");
-                            sw.WriteLine();
-                            sw.Flush();
-                            Console.WriteLine($"Performed Lookup on '{ID}' returning '404 Not Found'");
-                        }
-                    }
-                }
-                finally
-                {
-                    connection.Close();
-                }
-            }
             else
             {
-                Console.WriteLine($"Unrecognized command: '{line}'");
+                // if Location is not valid, send an error response
                 sw.WriteLine("HTTP/1.1 400 Bad Request");
                 sw.WriteLine("Content-Type: text/plain");
                 sw.WriteLine();
-            }
+                sw.WriteLine("Invalid location");
+                sw.Flush();
+            }   
         }
-        catch (IOException e)
+        else if (line.StartsWith("GET /?name=") && line.EndsWith(" HTTP/1.1"))
         {
-            Console.WriteLine($"Error reading from the client: {e.Message}");
-        }
-        finally
-        {
+            if (debug) Console.WriteLine("Received a lookup request");
+
+            String[] slices = line.Split(" ");
+            String ID = slices[1].Substring(7);
+
             try
             {
-                sw.Close();
-                sr.Close();
-                socketStream.Close();
+                using (MySqlCommand command = new MySqlCommand($"SELECT LocationName FROM user_accounts.users u " +
+                                                       $"JOIN UserLocation ul ON u.User_ID = ul.UserID " +
+                                                       $"JOIN Location l ON ul.LocationID = l.LocationID " +
+                                                       $"WHERE u.User_ID = '{ID}'", connection))
+                {
+                    connection.Open();
+                    object result = command.ExecuteScalar();
+
+                    if (result != null)
+                    {
+                        sw.WriteLine("HTTP/1.1 200 OK");
+                        sw.WriteLine("Content-Type: text/plain");
+                        sw.WriteLine();
+                        sw.WriteLine(result.ToString());
+                        sw.Flush();
+                        Console.WriteLine($"Performed Lookup on '{ID}' returning '{result}'");
+                    }
+                    else
+                    {
+                        sw.WriteLine("HTTP/1.1 404 Not Found");
+                        sw.WriteLine("Content-Type: text/plain");
+                        sw.WriteLine();
+                        sw.Flush();
+                        Console.WriteLine($"Performed Lookup on '{ID}' returning '404 Not Found'");
+                    }
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                Console.WriteLine($"Error closing the streams or socket: {ex.Message}");
+                connection.Close();
             }
         }
+        else
+        {
+            Console.WriteLine($"Unrecognized command: '{line}'");
+            sw.WriteLine("HTTP/1.1 400 Bad Request");
+            sw.WriteLine("Content-Type: text/plain");
+            sw.WriteLine();
+        }
+    }
+    catch (IOException e)
+    {
+        Console.WriteLine($"Error reading from the client: {e.Message}");
+    }
+    finally
+    {
+        try
+        {
+            sw.Close();
+            sr.Close();
+            socketStream.Close();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error closing the streams or socket: {ex.Message}");
+        }
+    }
 }
-
+bool IsValidLocation(string location)
+{
+    if (int.TryParse(location, out int locationNumber))
+    {
+        // Check if the location number is between 1 and 5
+        return locationNumber >= 1 && locationNumber <= 5;
+    }
+    // Invalid location if not a valid integer
+    return false;
+}
